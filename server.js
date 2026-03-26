@@ -116,9 +116,8 @@ app.post('/api/create-draft-order', async (req, res) => {
         line_items: [
           {
             title: 'DTF Transfer Sticker',
-            original_unit_price: unitPrice.toFixed(2),
+            price: unitPrice.toFixed(2),
             quantity: validatedQuantity,
-            custom: true,
             properties: [
               { name: 'User Artwork', value: artworkUrl || '' },
               { name: 'Mockup Preview', value: mockupUrl || '' },
