@@ -48,8 +48,17 @@ function normalizeQuantity(quantity) {
   return q;
 }
 
+function sanitizeProductTitle(title) {
+  if (!title || typeof title !== 'string') return 'DTF Transfer Sticker';
+  const cleaned = title.trim();
+  return cleaned || 'DTF Transfer Sticker';
+}
+
 function buildDraftNote(data) {
   return [
+    `Selected Product: ${data.productTitle || ''}`,
+    `Product Handle: ${data.productHandle || ''}`,
+    `Product Image: ${data.productImage || ''}`,
     `User Artwork: ${data.artworkUrl || ''}`,
     `Mockup Preview: ${data.mockupUrl || ''}`,
     `Artwork File Name: ${data.uploadedFileName || ''}`,
@@ -96,7 +105,11 @@ app.post('/api/create-draft-order', async (req, res) => {
       placementWidthPx,
       placementHeightPx,
       frontendUnitPrice,
-      frontendTotalPrice
+      frontendTotalPrice,
+      productTitle,
+      productHandle,
+      productImage,
+      selectedProductLabel
     } = req.body || {};
 
     if (!artworkUrl) {
@@ -111,14 +124,21 @@ app.post('/api/create-draft-order', async (req, res) => {
     const unitPrice = calculateDTFUnitPrice(width, height);
     const totalPrice = Number((unitPrice * validatedQuantity).toFixed(2));
 
+    const finalProductTitle = sanitizeProductTitle(
+      selectedProductLabel || productTitle || 'DTF Transfer Sticker'
+    );
+
     const draftPayload = {
       draft_order: {
         line_items: [
           {
-            title: 'DTF Transfer Sticker',
+            title: finalProductTitle,
             price: unitPrice.toFixed(2),
             quantity: validatedQuantity,
             properties: [
+              { name: 'Selected Product', value: finalProductTitle },
+              { name: 'Product Handle', value: productHandle || '' },
+              { name: 'Product Image', value: productImage || '' },
               { name: 'User Artwork', value: artworkUrl || '' },
               { name: 'Mockup Preview', value: mockupUrl || '' },
               { name: 'Artwork File Name', value: uploadedFileName || '' },
@@ -150,7 +170,10 @@ app.post('/api/create-draft-order', async (req, res) => {
           placementWidthPx,
           placementHeightPx,
           frontendUnitPrice,
-          frontendTotalPrice
+          frontendTotalPrice,
+          productTitle: finalProductTitle,
+          productHandle,
+          productImage
         }),
         tags: 'dtf-custom-order'
       }
@@ -188,7 +211,8 @@ app.post('/api/create-draft-order', async (req, res) => {
       invoiceUrl,
       unitPrice: unitPrice.toFixed(2),
       quantity: validatedQuantity,
-      totalPrice: totalPrice.toFixed(2)
+      totalPrice: totalPrice.toFixed(2),
+      selectedProduct: finalProductTitle
     });
   } catch (error) {
     console.error('create-draft-order error:', error);
