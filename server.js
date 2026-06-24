@@ -9,16 +9,52 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const SHOPIFY_STORE_DOMAIN = normalizeShopifyDomain(process.env.SHOPIFY_STORE_DOMAIN);
 const SHOPIFY_ADMIN_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-const BASE_STICKER_PRICE = Number(process.env.BASE_STICKER_PRICE || 25);
-const EXTRA_STICKER_PRICE = Number(process.env.EXTRA_STICKER_PRICE || 5);
+const ALLOWED_ORIGINS = buildAllowedOrigins();
 
 app.use(cors({
-  origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN,
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (ALLOWED_ORIGINS === true || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: false
 }));
 
 app.use(express.json({ limit: '10mb' }));
+
+function buildAllowedOrigins() {
+  const configured = (process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (configured.includes('*')) {
+    return true;
+  }
+
+  const shopDomain = normalizeShopifyDomain(process.env.SHOPIFY_STORE_DOMAIN);
+  const defaults = [
+    'http://127.0.0.1:9292',
+    'http://localhost:9292'
+  ];
+
+  if (shopDomain) {
+    defaults.push(`https://${shopDomain}`);
+  }
+
+  return [...new Set([...configured, ...defaults])];
+}
+
+const BASE_STICKER_PRICE = Number(process.env.BASE_STICKER_PRICE || 25);
+const EXTRA_STICKER_PRICE = Number(process.env.EXTRA_STICKER_PRICE || 5);
 
 function normalizeShopifyDomain(domain) {
   if (!domain || typeof domain !== 'string') return '';
