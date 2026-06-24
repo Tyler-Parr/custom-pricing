@@ -57,6 +57,7 @@ function buildDraftNote(data) {
     `Artwork File Name: ${data.uploadedFileName || ''}`,
     `Mockup Side: ${data.side || ''}`,
     `Apparel Color: ${data.color || ''}`,
+    `Apparel Size: ${data.size || ''}`,
     `Width (in): ${data.width || ''}`,
     `Height (in): ${data.height || ''}`,
     `Sticker Quantity: ${data.quantity || ''}`,
@@ -96,6 +97,7 @@ app.post('/api/create-draft-order', async (req, res) => {
       uploadedFileName,
       side,
       color,
+      size,
       width,
       height,
       quantity,
@@ -131,9 +133,10 @@ app.post('/api/create-draft-order', async (req, res) => {
       draft_order: {
         line_items: [
           {
-            title: finalProductTitle,
+            title: `Custom DTF Order - ${finalProductTitle}`,
             price: totalPrice.toFixed(2),
             quantity: 1,
+            custom: true,
             properties: [
               { name: 'Selected Product', value: finalProductTitle },
               { name: 'Product Handle', value: productHandle || '' },
@@ -143,6 +146,7 @@ app.post('/api/create-draft-order', async (req, res) => {
               { name: 'Artwork File Name', value: uploadedFileName || '' },
               { name: 'Mockup Side', value: side || '' },
               { name: 'Apparel Color', value: color || '' },
+              { name: 'Apparel Size', value: String(size || '') },
               { name: 'Width (in)', value: String(width || '') },
               { name: 'Height (in)', value: String(height || '') },
               { name: 'Sticker Quantity', value: String(validatedQuantity) },
@@ -163,6 +167,7 @@ app.post('/api/create-draft-order', async (req, res) => {
           uploadedFileName,
           side,
           color,
+          size,
           width,
           height,
           quantity: validatedQuantity,
