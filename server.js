@@ -7,10 +7,11 @@ dotenv.config();
 const app = express();
 
 const PORT = process.env.PORT || 10000;
-const SHOPIFY_STORE_DOMAIN = process.env.SHOPIFY_STORE_DOMAIN;
+const SHOPIFY_STORE_DOMAIN = normalizeShopifyDomain(process.env.SHOPIFY_STORE_DOMAIN);
 const SHOPIFY_ADMIN_ACCESS_TOKEN = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-const PRICE_PER_SQ_IN = Number(process.env.PRICE_PER_SQ_IN || 0.07);
+const BASE_STICKER_PRICE = Number(process.env.BASE_STICKER_PRICE || 25);
+const EXTRA_STICKER_PRICE = Number(process.env.EXTRA_STICKER_PRICE || 5);
 
 app.use(cors({
   origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN,
@@ -19,23 +20,9 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-function calculateDTFUnitPrice(width, height) {
-  const w = Number(width);
-  const h = Number(height);
-
-  if (Number.isNaN(w) || Number.isNaN(h)) {
-    throw new Error('Width and height must be valid numbers.');
-  }
-
-  if (w < 1 || w > 13) {
-    throw new Error('Width must be between 1 and 13 inches.');
-  }
-
-  if (h < 1 || h > 22) {
-    throw new Error('Height must be between 1 and 22 inches.');
-  }
-
-  return Number((w * h * PRICE_PER_SQ_IN).toFixed(2));
+function normalizeShopifyDomain(domain) {
+  if (!domain || typeof domain !== 'string') return '';
+  return domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
 function normalizeQuantity(quantity) {
@@ -46,6 +33,12 @@ function normalizeQuantity(quantity) {
   }
 
   return q;
+}
+
+function calculateDTFTotalPrice(quantity) {
+  const q = normalizeQuantity(quantity);
+  const total = BASE_STICKER_PRICE + Math.max(0, q - 1) * EXTRA_STICKER_PRICE;
+  return Number(total.toFixed(2));
 }
 
 function sanitizeProductTitle(title) {
@@ -66,11 +59,13 @@ function buildDraftNote(data) {
     `Apparel Color: ${data.color || ''}`,
     `Width (in): ${data.width || ''}`,
     `Height (in): ${data.height || ''}`,
-    `Quantity: ${data.quantity || ''}`,
+    `Sticker Quantity: ${data.quantity || ''}`,
     `Placement X: ${data.placementX ?? ''}`,
     `Placement Y: ${data.placementY ?? ''}`,
     `Placement Width Px: ${data.placementWidthPx ?? ''}`,
     `Placement Height Px: ${data.placementHeightPx ?? ''}`,
+    `Base Sticker Price: $${BASE_STICKER_PRICE.toFixed(2)}`,
+    `Extra Sticker Price: $${EXTRA_STICKER_PRICE.toFixed(2)}`,
     `Frontend Unit Price: ${data.frontendUnitPrice || ''}`,
     `Frontend Total Price: ${data.frontendTotalPrice || ''}`
   ].join('\n');
@@ -79,7 +74,11 @@ function buildDraftNote(data) {
 app.get('/', (req, res) => {
   res.json({
     status: 'ok',
-    message: 'DTF Draft Order App running'
+    message: 'DTF Draft Order App running',
+    pricing: {
+      baseStickerPrice: BASE_STICKER_PRICE,
+      extraStickerPrice: EXTRA_STICKER_PRICE
+    }
   });
 });
 
@@ -121,8 +120,8 @@ app.post('/api/create-draft-order', async (req, res) => {
     }
 
     const validatedQuantity = normalizeQuantity(quantity);
-    const unitPrice = calculateDTFUnitPrice(width, height);
-    const totalPrice = Number((unitPrice * validatedQuantity).toFixed(2));
+    const totalPrice = calculateDTFTotalPrice(validatedQuantity);
+    const averageUnitPrice = Number((totalPrice / validatedQuantity).toFixed(2));
 
     const finalProductTitle = sanitizeProductTitle(
       selectedProductLabel || productTitle || 'DTF Transfer Sticker'
@@ -133,8 +132,8 @@ app.post('/api/create-draft-order', async (req, res) => {
         line_items: [
           {
             title: finalProductTitle,
-            price: unitPrice.toFixed(2),
-            quantity: validatedQuantity,
+            price: totalPrice.toFixed(2),
+            quantity: 1,
             properties: [
               { name: 'Selected Product', value: finalProductTitle },
               { name: 'Product Handle', value: productHandle || '' },
@@ -146,13 +145,15 @@ app.post('/api/create-draft-order', async (req, res) => {
               { name: 'Apparel Color', value: color || '' },
               { name: 'Width (in)', value: String(width || '') },
               { name: 'Height (in)', value: String(height || '') },
-              { name: 'Quantity', value: String(validatedQuantity) },
+              { name: 'Sticker Quantity', value: String(validatedQuantity) },
               { name: 'Placement X', value: String(placementX ?? '') },
               { name: 'Placement Y', value: String(placementY ?? '') },
               { name: 'Placement Width Px', value: String(placementWidthPx ?? '') },
               { name: 'Placement Height Px', value: String(placementHeightPx ?? '') },
-              { name: 'Calculated Unit Price', value: `$${unitPrice.toFixed(2)}` },
-              { name: 'Calculated Total Price', value: `$${totalPrice.toFixed(2)}` }
+              { name: 'Base Sticker Price', value: `$${BASE_STICKER_PRICE.toFixed(2)}` },
+              { name: 'Extra Sticker Price', value: `$${EXTRA_STICKER_PRICE.toFixed(2)}` },
+              { name: 'Calculated Total Price', value: `$${totalPrice.toFixed(2)}` },
+              { name: 'Average Price Per Sticker', value: `$${averageUnitPrice.toFixed(2)}` }
             ]
           }
         ],
@@ -209,9 +210,11 @@ app.post('/api/create-draft-order', async (req, res) => {
       success: true,
       draftOrderId: draftOrder.id,
       invoiceUrl,
-      unitPrice: unitPrice.toFixed(2),
+      unitPrice: averageUnitPrice.toFixed(2),
       quantity: validatedQuantity,
       totalPrice: totalPrice.toFixed(2),
+      baseStickerPrice: BASE_STICKER_PRICE.toFixed(2),
+      extraStickerPrice: EXTRA_STICKER_PRICE.toFixed(2),
       selectedProduct: finalProductTitle
     });
   } catch (error) {
